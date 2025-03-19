@@ -114,4 +114,32 @@ class PostgresService:
                 return [table['table_name'] for table in tables]
         except Exception as e:
             self.logger.logjson("ERROR", f"Error listing PostgreSQL tables: {str(e)}")
+            raise
+
+    async def get_table_sample(self, table_name: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get a sample of rows from a PostgreSQL table
+        
+        Args:
+            table_name: Name of the table to sample
+            limit: Maximum number of rows to return
+            
+        Returns:
+            List of dictionaries containing the sampled rows
+        """
+        try:
+            if not self.pool:
+                await self.connect()
+                
+            async with self.pool.acquire() as conn:
+                # Get sample data
+                result = await conn.fetch(f"""
+                    SELECT * FROM {table_name}
+                    ORDER BY RANDOM()
+                    LIMIT {limit}
+                """)
+                
+                return [dict(row) for row in result]
+                
+        except Exception as e:
+            self.logger.logjson("ERROR", f"Error getting sample from table {table_name}: {str(e)}")
             raise 

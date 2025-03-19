@@ -4,8 +4,23 @@ from typing import List, Optional, Dict, Any
 from src.utils.logging_utils import get_logger
 from src.services.postgres_service import PostgresService
 from src.services.iceberg_service import IcebergService
+import json
 
 logger = get_logger(__name__)
+
+@strawberry.scalar(
+    name="JSON",
+    description="The `JSON` scalar type represents JSON values as specified by ECMA-404",
+    specified_by_url="http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf",
+)
+class JSON:
+    @staticmethod
+    def serialize(value: Any) -> str:
+        return json.dumps(value)
+
+    @staticmethod
+    def parse_value(value: str) -> Any:
+        return json.loads(value)
 
 @strawberry.type
 class TableRow:
@@ -53,6 +68,45 @@ class S3Table:
     name: str
     location: str
     format: str
+
+@strawberry.type
+class TableSchema:
+    name: str
+    type: str
+
+@strawberry.type
+class PostgresTable:
+    name: str
+    row_count: int
+    schema: List[TableSchema]
+
+@strawberry.type
+class PostgresQueryRow:
+    @strawberry.field
+    def values(self) -> Dict[str, str]:
+        return self._values
+
+    def __init__(self, values: Dict[str, Any]):
+        self._values = {k: str(v) for k, v in values.items()}
+
+@strawberry.type
+class PostgresQueryResult:
+    data: List[JSON]
+    row_count: int
+    execution_time: float
+
+@strawberry.type
+class ColumnStats:
+    count: int
+    distinct_count: int
+    min_value: Optional[JSON]
+    max_value: Optional[JSON]
+
+@strawberry.type
+class PostgresTableStats:
+    total_rows: int
+    column_stats: JSON
+    schema: List[TableSchema]
 
 def create_query(postgres_service: PostgresService, iceberg_service: IcebergService):
     @strawberry.type
@@ -241,6 +295,113 @@ def create_query(postgres_service: PostgresService, iceberg_service: IcebergServ
                     row_count=0,
                     columns=[]
                 )
+
+        @strawberry.field
+        async def list_postgres_tables(self) -> List[PostgresTable]:
+            """List all PostgreSQL tables with their schemas"""
+            try:
+                tables = await postgres_service.get_tables()
+                result = []
+                
+                for table_name in tables:
+                    stats = await postgres_service.get_table_stats(table_name)
+                    schema_list = [
+                        TableSchema(name=col_name, type=col_type)
+                        for col_name, col_type in stats['schema'].items()
+                    ]
+                    result.append(PostgresTable(
+                        name=table_name,
+                        row_count=stats['total_rows'],
+                        schema=schema_list
+                    ))
+                
+                return result
+            except Exception as e:
+                logger.logjson("ERROR", f"Error listing PostgreSQL tables: {str(e)}")
+                raise
+
+        @strawberry.field
+        async def postgresQuery(self, query: str) -> PostgresQueryResult:
+            """Execute a custom query against PostgreSQL"""
+            try:
+                import time
+                start_time = time.time()
+                
+                # Execute the query
+                results = await postgres_service.execute_query(query)
+                
+                # Convert results to JSON-compatible format
+                json_results = []
+                for row in results:
+                    json_row = {}
+                    for key, value in dict(row).items():
+                        if isinstance(value, (int, float, str, bool, type(None))):
+                            json_row[key] = value
+                        else:
+                            json_row[key] = str(value)
+                    json_results.append(json_row)
+                
+                execution_time = time.time() - start_time
+                
+                return PostgresQueryResult(
+                    data=json_results,
+                    row_count=len(results),
+                    execution_time=execution_time
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error executing PostgreSQL query: {str(e)}")
+                raise
+
+        @strawberry.field
+        async def get_postgres_table_sample(self, table_name: str, limit: Optional[int] = 10) -> PostgresQueryResult:
+            """Get a sample of rows from a PostgreSQL table"""
+            try:
+                import time
+                start_time = time.time()
+                
+                # Get sample data
+                results = await postgres_service.get_table_sample(table_name, limit)
+                
+                execution_time = time.time() - start_time
+                
+                return PostgresQueryResult(
+                    data=results,
+                    row_count=len(results),
+                    execution_time=execution_time
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error getting sample from table {table_name}: {str(e)}")
+                raise
+
+        @strawberry.field
+        async def get_postgres_table_stats(self, table_name: str) -> PostgresTableStats:
+            """Get statistics for a PostgreSQL table"""
+            try:
+                stats = await postgres_service.get_table_stats(table_name)
+                schema_list = [
+                    TableSchema(name=col_name, type=col_type)
+                    for col_name, col_type in stats['schema'].items()
+                ]
+                
+                # Convert column stats to JSON-compatible format
+                json_column_stats = {}
+                for col_name, col_stats in stats['column_stats'].items():
+                    json_stats = {}
+                    for key, value in col_stats.items():
+                        if isinstance(value, (int, float, str, bool, type(None))):
+                            json_stats[key] = value
+                        else:
+                            json_stats[key] = str(value)
+                    json_column_stats[col_name] = json_stats
+                
+                return PostgresTableStats(
+                    total_rows=stats['total_rows'],
+                    column_stats=json_column_stats,
+                    schema=schema_list
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error getting stats for table {table_name}: {str(e)}")
+                raise
 
     return Query
 

@@ -83,6 +83,11 @@ ANALYTICS_INTEGRATION_ENABLED=false
 GLUE_CATALOG_ID=your-glue-catalog-id
 SAGEMAKER_INTEGRATION=false
 
+# Performance Optimization
+DEFAULT_PARTITION_COUNT=10
+MATERIALIZATION_ENABLED=true
+MATERIALIZATION_TTL=3600
+
 # API Settings
 PORT=8000
 HOST=0.0.0.0
@@ -178,6 +183,32 @@ mutation {
     sagemakerEnabled
   }
 }
+
+# Repartition a table for better performance
+mutation {
+  repartitionTable(
+    tableName: "sales"
+    numPartitions: 10
+    partitionBy: ["date", "region"]
+    namespace: "default"
+  ) {
+    success
+    message
+    numPartitions
+    partitionColumns
+    rowCount
+  }
+}
+
+# Materialize a query result
+mutation {
+  materializeQuery(query: "SELECT * FROM sales WHERE date >= '2024-01-01'") {
+    success
+    message
+    rowCount
+    columns
+  }
+}
 ```
 
 ## Project Structure
@@ -224,6 +255,28 @@ The application implements a tiered data retention strategy:
 
 The API automatically indicates which data source is being used for each query and provides retention information in the response. Use the `getRecommendedDataSource` field to determine which data source to query based on your date requirements.
 
+## Performance Optimization
+
+The application includes several features for optimizing query performance:
+
+### Table Repartitioning
+- Automatically repartition tables based on primary keys or specified columns
+- Configurable number of partitions
+- Improves query performance for large datasets
+- Supports custom partition columns
+
+### Query Materialization
+- Cache complex query results for faster subsequent access
+- Automatic materialization of JOIN and UNION operations
+- Configurable cache TTL
+- Reduces computation time for frequently accessed data
+
+### Query Optimization
+- Automatic LIMIT addition for non-aggregate queries
+- Materialization hints for complex operations
+- Intelligent caching of table data and query results
+- Circuit breaker for error handling and retries
+
 ## Security Considerations
 
 ### Environment Variables
@@ -252,4 +305,4 @@ This project uses environment variables for sensitive configuration. Never commi
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.

@@ -143,6 +143,7 @@ class IcebergService:
 
     def _optimize_query(self, query: str) -> str:
         """Optimize the query for better performance"""
+        # Add default LIMIT for non-aggregate queries
         if (
             "limit" not in query.lower() and
             "group by" not in query.lower() and
@@ -151,6 +152,11 @@ class IcebergService:
             "avg(" not in query.lower()
         ):
             query = f"{query.rstrip(';')} LIMIT 1000;"
+            
+        # Add materialization hints for complex queries
+        if "join" in query.lower() or "union" in query.lower():
+            query = f"WITH MATERIALIZED AS ({query}) SELECT * FROM MATERIALIZED;"
+            
         return query
 
     def read_s3_table(
@@ -441,6 +447,96 @@ class IcebergService:
             })
         except Exception as e:
             logger.logjson("ERROR", f"Failed to configure analytics integration: {str(e)}")
+            raise
+
+    def repartition_table(
+        self,
+        table_name: str,
+        num_partitions: int,
+        partition_by: Optional[List[str]] = None,
+        namespace: Optional[str] = None
+    ) -> pd.DataFrame:
+        """Repartition a table for better performance.
+        
+        Args:
+            table_name: Name of the table to repartition
+            num_partitions: Number of partitions to create
+            partition_by: List of columns to partition by (default: primary key)
+            namespace: Optional namespace for the table
+            
+        Returns:
+            DataFrame: Repartitioned table
+        """
+        try:
+            if not namespace:
+                namespace = self.config.iceberg_namespace
+                
+            # Get table schema to determine partition columns if not specified
+            if not partition_by:
+                schema = self.get_table_schema(table_name)
+                if schema and 'columns' in schema:
+                    # Try to find primary key or unique columns
+                    partition_by = [
+                        col['Name'] for col in schema['columns']
+                        if col.get('IsPrimaryKey', False) or col.get('IsUnique', False)
+                    ]
+                    if not partition_by:
+                        # Fallback to first column if no primary key found
+                        partition_by = [schema['columns'][0]['Name']]
+            
+            # Read the table
+            df = self.read_s3_table(
+                table_bucket_arn=self.table_bucket_arn,
+                namespace=namespace,
+                table_name=table_name
+            )
+            
+            # Repartition the DataFrame
+            if partition_by:
+                df = df.repartition(num_partitions, hash_by=partition_by)
+            else:
+                df = df.repartition(num_partitions)
+                
+            logger.logjson("INFO", f"Repartitioned table {table_name} into {num_partitions} partitions", {
+                "partition_by": partition_by
+            })
+            
+            return df
+            
+        except Exception as e:
+            logger.logjson("ERROR", f"Error repartitioning table {table_name}: {str(e)}")
+            raise
+
+    def materialize_query(self, query: str) -> pd.DataFrame:
+        """Materialize a query result for better performance.
+        
+        Args:
+            query: SQL query to materialize
+            
+        Returns:
+            DataFrame: Materialized query result
+        """
+        try:
+            # Execute the query
+            result = self.execute_query(query)
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(result)
+            
+            # Cache the materialized result
+            cache_key = self._get_query_hash(query)
+            self._table_cache[cache_key] = df
+            self._table_cache_metadata[cache_key] = {
+                'timestamp': time.time(),
+                'row_count': len(df),
+                'columns': df.columns.tolist()
+            }
+            
+            logger.logjson("INFO", f"Materialized query result with {len(df)} rows")
+            return df
+            
+        except Exception as e:
+            logger.logjson("ERROR", f"Error materializing query: {str(e)}")
             raise
 
     def __del__(self):

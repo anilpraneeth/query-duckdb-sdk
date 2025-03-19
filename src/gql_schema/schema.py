@@ -34,6 +34,21 @@ class AnalyticsResult:
     sagemaker_enabled: bool
 
 @strawberry.type
+class RepartitionResult:
+    success: bool
+    message: str
+    num_partitions: int
+    partition_columns: List[str]
+    row_count: int
+
+@strawberry.type
+class MaterializeResult:
+    success: bool
+    message: str
+    row_count: int
+    columns: List[str]
+
+@strawberry.type
 class S3Table:
     name: str
     location: str
@@ -170,6 +185,61 @@ def create_query(postgres_service: PostgresService, iceberg_service: IcebergServ
                     message=f"Failed to setup analytics integration: {str(e)}",
                     glue_catalog_id=None,
                     sagemaker_enabled=False
+                )
+
+        @strawberry.field
+        async def repartition_table(
+            self,
+            table_name: str,
+            num_partitions: int,
+            partition_by: Optional[List[str]] = None,
+            namespace: Optional[str] = None
+        ) -> RepartitionResult:
+            """Repartition a table for better performance"""
+            try:
+                df = iceberg_service.repartition_table(
+                    table_name=table_name,
+                    num_partitions=num_partitions,
+                    partition_by=partition_by,
+                    namespace=namespace
+                )
+                
+                return RepartitionResult(
+                    success=True,
+                    message=f"Successfully repartitioned table {table_name}",
+                    num_partitions=num_partitions,
+                    partition_columns=partition_by or [],
+                    row_count=len(df)
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error repartitioning table {table_name}: {str(e)}")
+                return RepartitionResult(
+                    success=False,
+                    message=f"Failed to repartition table: {str(e)}",
+                    num_partitions=0,
+                    partition_columns=[],
+                    row_count=0
+                )
+
+        @strawberry.field
+        async def materialize_query(self, query: str) -> MaterializeResult:
+            """Materialize a query result for better performance"""
+            try:
+                df = iceberg_service.materialize_query(query)
+                
+                return MaterializeResult(
+                    success=True,
+                    message="Successfully materialized query result",
+                    row_count=len(df),
+                    columns=df.columns.tolist()
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error materializing query: {str(e)}")
+                return MaterializeResult(
+                    success=False,
+                    message=f"Failed to materialize query: {str(e)}",
+                    row_count=0,
+                    columns=[]
                 )
 
     return Query

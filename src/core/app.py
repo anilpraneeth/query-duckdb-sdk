@@ -3,8 +3,6 @@ import time
 from datetime import datetime
 from ..utils.logging_utils import get_logger
 from ..config.config import DuckDBIcebergConfig
-from ..services.database_service import DatabaseService
-from ..services.s3tables_service import S3TablesService
 from ..services.postgres_service import PostgresService
 from ..services.metrics_service import MetricsService
 import traceback
@@ -14,8 +12,6 @@ logger = get_logger(__name__)
 class DuckDBIcebergApp:
     def __init__(self, config: DuckDBIcebergConfig):
         self.config = config
-        self.db_service = DatabaseService(config)
-        self.s3tables_service = S3TablesService(config)
         self.postgres_service = PostgresService(config) if config.postgres_enabled else None
         self.metrics_service = MetricsService(config)
         self._running = False
@@ -27,7 +23,6 @@ class DuckDBIcebergApp:
             logger.logjson("INFO", "Starting DuckDB Iceberg Application")
             
             # Initialize services
-            self.db_service.initialize()
             if self.postgres_service:
                 logger.logjson("INFO", "PostgreSQL service initialized")
             
@@ -37,9 +32,6 @@ class DuckDBIcebergApp:
             # Main application loop
             while self._running:
                 try:
-                    # Process DuckDB tables
-                    self._process_duckdb_tables()
-                    
                     # Process PostgreSQL tables if enabled
                     if self.postgres_service:
                         self._process_postgres_tables()
@@ -65,7 +57,6 @@ class DuckDBIcebergApp:
             self.metrics_service.stop()
             
             # Close database connections
-            self.db_service.close()
             if self.postgres_service:
                 self.postgres_service.close()
                 
@@ -73,34 +64,6 @@ class DuckDBIcebergApp:
             
         except Exception as e:
             logger.logjson("ERROR", f"Error stopping application: {str(e)}\n{traceback.format_exc()}")
-
-    def _process_duckdb_tables(self):
-        """Process DuckDB tables"""
-        try:
-            # Get list of tables
-            tables = self.db_service.get_tables()
-            if not tables:
-                logger.logjson("WARN", "No tables found in DuckDB")
-                return
-                
-            for table in tables:
-                try:
-                    # Get table stats
-                    stats = self.db_service.get_table_stats(table)
-                    if stats:
-                        self.metrics_service.record_table_stats("duckdb", table, stats)
-                    
-                    # Get sample data
-                    sample = self.db_service.get_table_sample(table)
-                    if sample:
-                        self.metrics_service.record_table_sample("duckdb", table, sample)
-                        
-                except Exception as e:
-                    logger.logjson("ERROR", f"Error processing DuckDB table {table}: {str(e)}")
-                    continue
-                    
-        except Exception as e:
-            logger.logjson("ERROR", f"Error processing DuckDB tables: {str(e)}")
 
     def _process_postgres_tables(self):
         """Process PostgreSQL tables"""

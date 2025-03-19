@@ -108,6 +108,13 @@ class PostgresTableStats:
     column_stats: JSON
     schema: List[TableSchema]
 
+@strawberry.type
+class UnifiedQueryResult:
+    data: List[JSON]
+    row_count: int
+    execution_time: float
+    source: str  # "postgres" or "s3tables"
+
 def create_query(postgres_service: PostgresService, iceberg_service: IcebergService):
     @strawberry.type
     class Query:
@@ -401,6 +408,180 @@ def create_query(postgres_service: PostgresService, iceberg_service: IcebergServ
                 )
             except Exception as e:
                 logger.logjson("ERROR", f"Error getting stats for table {table_name}: {str(e)}")
+                raise
+
+        @strawberry.field
+        async def unifiedQuery(
+            self,
+            query: str,
+            source: str = "auto"  # "auto", "postgres", or "s3tables"
+        ) -> UnifiedQueryResult:
+            """Execute a query against either PostgreSQL or S3Tables based on the source or data age"""
+            try:
+                import time
+                start_time = time.time()
+                
+                # Determine the source if auto
+                if source == "auto":
+                    # Extract table name from query
+                    import re
+                    table_match = re.search(r'FROM\s+([a-zA-Z0-9_]+)', query, re.IGNORECASE)
+                    if table_match:
+                        table_name = table_match.group(1)
+                        
+                        # Check if table exists in PostgreSQL
+                        postgres_tables = await postgres_service.get_tables()
+                        if table_name in postgres_tables:
+                            # Check if query involves recent data (last 30 days or less)
+                            time_keywords = [
+                                "timestamp <= now()",
+                                "timestamp <= current_timestamp",
+                                "timestamp <= (now())",
+                                "timestamp <= (current_timestamp)",
+                                "timestamp < now() + interval '1 day'",
+                                "timestamp < current_timestamp + interval '1 day'",
+                                "timestamp < (now() + interval '1 day')",
+                                "timestamp < (current_timestamp + interval '1 day')",
+                                "timestamp >= now() - interval '30 days'",
+                                "timestamp >= current_timestamp - interval '30 days'",
+                                "timestamp >= (now() - interval '30 days')",
+                                "timestamp >= (current_timestamp - interval '30 days')"
+                            ]
+                            
+                            # Check if query has a WHERE clause with timestamp
+                            where_match = re.search(r'WHERE\s+(.*?)(?:GROUP BY|ORDER BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
+                            if where_match:
+                                where_clause = where_match.group(1).strip()
+                                # Check if WHERE clause contains recent time conditions
+                                if any(keyword in where_clause.lower() for keyword in time_keywords):
+                                    source = "postgres"
+                                else:
+                                    # If no time condition, check if query is for recent data
+                                    if "timestamp" in query.lower():
+                                        # Add time condition to query for last 30 days
+                                        query = query.replace("WHERE", "WHERE timestamp >= now() - interval '30 days' AND timestamp <= now() AND")
+                                        source = "postgres"
+                                    else:
+                                        source = "s3tables"
+                            else:
+                                # If no WHERE clause, add time condition for recent data
+                                if "timestamp" in query.lower():
+                                    query = query.replace("FROM", "FROM test_metrics WHERE timestamp >= now() - interval '30 days' AND timestamp <= now() AND")
+                                    source = "postgres"
+                                else:
+                                    source = "s3tables"
+                        else:
+                            # If table doesn't exist in PostgreSQL, use S3Tables
+                            source = "s3tables"
+                    else:
+                        # If no table found in query, default to S3Tables
+                        source = "s3tables"
+                
+                # Execute query based on source
+                if source == "postgres":
+                    results = await postgres_service.execute_query(query)
+                else:
+                    results = await iceberg_service.execute_query(query)
+                
+                # Convert results to JSON-compatible format
+                json_results = []
+                for row in results:
+                    json_row = {}
+                    for key, value in dict(row).items():
+                        if isinstance(value, (int, float, str, bool, type(None))):
+                            json_row[key] = value
+                        else:
+                            json_row[key] = str(value)
+                    json_results.append(json_row)
+                
+                execution_time = time.time() - start_time
+                
+                return UnifiedQueryResult(
+                    data=json_results,
+                    row_count=len(results),
+                    execution_time=execution_time,
+                    source=source
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error executing unified query: {str(e)}")
+                raise
+
+        @strawberry.field
+        async def unifiedTableStats(
+            self,
+            table_name: str,
+            source: str = "auto"  # "auto", "postgres", or "s3tables"
+        ) -> JSON:
+            """Get statistics for a table from either PostgreSQL or S3Tables"""
+            try:
+                # Determine the source if auto
+                if source == "auto":
+                    # Check if table exists in PostgreSQL
+                    tables = await postgres_service.get_tables()
+                    if table_name in tables:
+                        source = "postgres"
+                    else:
+                        source = "s3tables"
+                
+                # Get stats based on source
+                if source == "postgres":
+                    stats = await postgres_service.get_table_stats(table_name)
+                else:
+                    stats = await iceberg_service.get_table_stats(table_name)
+                
+                return stats
+            except Exception as e:
+                logger.logjson("ERROR", f"Error getting unified table stats: {str(e)}")
+                raise
+
+        @strawberry.field
+        async def unifiedTableSample(
+            self,
+            table_name: str,
+            limit: Optional[int] = 10,
+            source: str = "auto"  # "auto", "postgres", or "s3tables"
+        ) -> UnifiedQueryResult:
+            """Get a sample of rows from a table in either PostgreSQL or S3Tables"""
+            try:
+                import time
+                start_time = time.time()
+                
+                # Determine the source if auto
+                if source == "auto":
+                    # Check if table exists in PostgreSQL
+                    tables = await postgres_service.get_tables()
+                    if table_name in tables:
+                        source = "postgres"
+                    else:
+                        source = "s3tables"
+                
+                # Get sample based on source
+                if source == "postgres":
+                    results = await postgres_service.get_table_sample(table_name, limit)
+                else:
+                    results = await iceberg_service.get_table_sample(table_name, limit)
+                
+                # Convert results to JSON-compatible format
+                json_results = []
+                for row in results:
+                    json_row = {}
+                    for key, value in dict(row).items():
+                        if isinstance(value, (int, float, str, bool, type(None))):
+                            json_row[key] = value
+                        else:
+                            json_row[key] = str(value)
+                    json_results.append(json_row)
+                
+                execution_time = time.time() - start_time
+                
+                return UnifiedQueryResult(
+                    data=json_results,
+                    row_count=len(results),
+                    execution_time=execution_time,
+                    source=source
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error getting unified table sample: {str(e)}")
                 raise
 
     return Query

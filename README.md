@@ -265,6 +265,30 @@ The application includes several features for optimizing query performance:
 - Improves query performance for large datasets
 - Supports custom partition columns
 
+### Small Pond Repartitioning
+- Optimizes table partitioning for frequently accessed data
+- Automatically detects optimal partition columns based on primary keys or unique columns
+- Supports custom partition columns for specific use cases
+- Configurable number of partitions through environment variables
+- Provides detailed feedback about repartitioning operations
+- Example usage:
+  ```graphql
+  mutation {
+    repartitionTable(
+      tableName: "sales"
+      numPartitions: 10
+      partitionBy: ["date", "region"]
+      namespace: "default"
+    ) {
+      success
+      message
+      numPartitions
+      partitionColumns
+      rowCount
+    }
+  }
+  ```
+
 ### Query Materialization
 - Cache complex query results for faster subsequent access
 - Automatic materialization of JOIN and UNION operations

@@ -73,6 +73,16 @@ POSTGRES_PASSWORD=your-password
 POSTGRES_SSL_MODE=require
 POSTGRES_POOL_SIZE=5
 
+# Table Maintenance Configuration
+MAINTENANCE_ENABLED=true
+COMPACTION_ENABLED=true
+SNAPSHOT_RETENTION_DAYS=30
+
+# Analytics Integration Configuration
+ANALYTICS_INTEGRATION_ENABLED=false
+GLUE_CATALOG_ID=your-glue-catalog-id
+SAGEMAKER_INTEGRATION=false
+
 # API Settings
 PORT=8000
 HOST=0.0.0.0
@@ -149,6 +159,24 @@ query {
 # Get recommended data source for a specific date
 query {
   getRecommendedDataSource(date: "2024-02-15T00:00:00")
+}
+
+# Configure table maintenance
+mutation {
+  configureTableMaintenance(tableName: "sales") {
+    success
+    message
+  }
+}
+
+# Setup analytics integration
+mutation {
+  setupAnalyticsIntegration {
+    success
+    message
+    glueCatalogId
+    sagemakerEnabled
+  }
 }
 ```
 

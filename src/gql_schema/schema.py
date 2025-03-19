@@ -22,6 +22,18 @@ class QueryResult:
     execution_time: float
 
 @strawberry.type
+class MaintenanceResult:
+    success: bool
+    message: str
+
+@strawberry.type
+class AnalyticsResult:
+    success: bool
+    message: str
+    glue_catalog_id: Optional[str]
+    sagemaker_enabled: bool
+
+@strawberry.type
 class S3Table:
     name: str
     location: str
@@ -123,6 +135,42 @@ def create_query(postgres_service: PostgresService, iceberg_service: IcebergServ
             except Exception as e:
                 logger.logjson("ERROR", f"Error executing Iceberg query: {str(e)}")
                 raise
+
+        @strawberry.field
+        async def configure_table_maintenance(self, table_name: str) -> MaintenanceResult:
+            """Configure maintenance settings for an Iceberg table"""
+            try:
+                iceberg_service.configure_table_maintenance(table_name)
+                return MaintenanceResult(
+                    success=True,
+                    message=f"Successfully configured maintenance for table {table_name}"
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error configuring maintenance for table {table_name}: {str(e)}")
+                return MaintenanceResult(
+                    success=False,
+                    message=f"Failed to configure maintenance: {str(e)}"
+                )
+
+        @strawberry.field
+        async def setup_analytics_integration(self) -> AnalyticsResult:
+            """Setup analytics service integration"""
+            try:
+                iceberg_service.setup_analytics_integration()
+                return AnalyticsResult(
+                    success=True,
+                    message="Successfully configured analytics integration",
+                    glue_catalog_id=iceberg_service.config.glue_catalog_id,
+                    sagemaker_enabled=iceberg_service.config.sagemaker_integration
+                )
+            except Exception as e:
+                logger.logjson("ERROR", f"Error setting up analytics integration: {str(e)}")
+                return AnalyticsResult(
+                    success=False,
+                    message=f"Failed to setup analytics integration: {str(e)}",
+                    glue_catalog_id=None,
+                    sagemaker_enabled=False
+                )
 
     return Query
 

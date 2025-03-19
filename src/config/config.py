@@ -39,6 +39,16 @@ class FederatedQueryConfig:
         self.iceberg_catalog = os.getenv('ICEBERG_CATALOG', 'local-dev-catalog')
         self.iceberg_namespace = os.getenv('ICEBERG_NAMESPACE', 'default')
         
+        # Table Maintenance Configuration
+        self.maintenance_enabled = os.getenv('MAINTENANCE_ENABLED', 'true').lower() == 'true'
+        self.compaction_enabled = os.getenv('COMPACTION_ENABLED', 'true').lower() == 'true'
+        self.snapshot_retention_days = int(os.getenv('SNAPSHOT_RETENTION_DAYS', '30'))
+        
+        # Analytics Integration Configuration
+        self.analytics_integration_enabled = os.getenv('ANALYTICS_INTEGRATION_ENABLED', 'false').lower() == 'true'
+        self.glue_catalog_id = os.getenv('GLUE_CATALOG_ID', '')
+        self.sagemaker_integration = os.getenv('SAGEMAKER_INTEGRATION', 'false').lower() == 'true'
+        
         # Get AWS credentials
         credentials = get_aws_credentials(self.aws_region, self.aws_secret_name)
         self.aws_access_key_id = credentials.get('aws_access_key_id')

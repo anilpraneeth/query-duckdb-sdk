@@ -1,0 +1,17 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:us-east-1:YOUR_AWS_ACCOUNT_ID:log-group:/ecs/query-duckdb-sdk:*",
+                "arn:aws:logs:us-east-1:YOUR_AWS_ACCOUNT_ID:log-group:/ecs/query-duckdb-sdk"
+            ]
+        }
+    ]
+} 

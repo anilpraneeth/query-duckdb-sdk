@@ -22,23 +22,25 @@ logger = get_logger(__name__)
 class IcebergService:
     """Service for interacting with Iceberg tables"""
     
-    def __init__(self, region: str, credentials: Dict[str, str], config: Any):
+    def __init__(self, region: str, config: Any):
         """Initialize the Iceberg service"""
         self.region = region
-        self.credentials = credentials
         self.config = config
-        self.session = boto3.Session(
-            aws_access_key_id=credentials['aws_access_key_id'],
-            aws_secret_access_key=credentials['aws_secret_access_key'],
-            region_name=region
-        )
+        self.session = boto3.Session(region_name=region)
         logger.info(f"Initialized Iceberg service for region {region}")
-        self.client = create_s3tables_client(region, credentials)
+        self.client = create_s3tables_client(region)
         
-        # Get table bucket ARN from environment
-        self.table_bucket_arn = os.environ.get('TABLE_BUCKET_ARN')
-        if not self.table_bucket_arn:
-            raise ValueError("TABLE_BUCKET_ARN environment variable is required")
+        # Get table bucket name from environment and construct ARN
+        self.table_bucket_name = os.environ.get('S3_TABLE_BUCKET')
+        if not self.table_bucket_name:
+            raise ValueError("S3_TABLE_BUCKET environment variable is required")
+        
+        # Get account ID using STS
+        sts_client = self.session.client('sts')
+        account_id = sts_client.get_caller_identity()['Account']
+        
+        # Construct the bucket ARN with the correct s3tables service format
+        self.table_bucket_arn = f"arn:aws:s3tables:{region}:{account_id}:bucket/{self.table_bucket_name}"
         
         # Initialize PyIceberg catalog with S3 Tables REST endpoint configuration
         self.catalog = load_catalog(
@@ -51,9 +53,7 @@ class IcebergService:
                 'rest.signing-name': 's3tables',
                 'rest.signing-region': region,
                 'io-impl': 'org.apache.iceberg.aws.s3.S3FileIO',
-                'aws.region': region,
-                'aws.access-key-id': credentials['aws_access_key_id'],
-                'aws.secret-access-key': credentials['aws_secret_access_key']
+                'aws.region': region
             }
         )
         

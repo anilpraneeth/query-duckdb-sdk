@@ -47,6 +47,56 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+## Docker and ECS Deployment
+
+The application is containerized and configured for deployment on AWS ECS Fargate. The deployment configuration includes:
+
+### Docker Configuration
+- `Dockerfile`: Defines the container image build process
+- `docker-compose.yml`: Local development and testing configuration
+- `.dockerignore`: Specifies files to exclude from the Docker build
+
+### ECS Configuration
+The `ecs/` directory contains the necessary configuration files for AWS ECS deployment:
+- `task-definition.json`: Defines the container and task specifications
+- `service-definition.json`: Configures the ECS service settings
+
+### Building and Deploying
+
+1. Build the Docker image:
+```bash
+docker build -t federated-query-layer .
+```
+
+2. Test locally using docker-compose:
+```bash
+docker-compose up
+```
+
+3. Deploy to ECS:
+```bash
+# Register the task definition
+aws ecs register-task-definition --cli-input-json file://ecs/task-definition.json
+
+# Create/update the service
+aws ecs create-service --cli-input-json file://ecs/service-definition.json
+```
+
+### ECS Task Definition
+The task definition includes:
+- Container image configuration
+- CPU and memory allocation
+- Environment variables
+- Logging configuration
+- Health check settings
+
+### ECS Service Configuration
+The service definition includes:
+- Desired task count
+- Load balancer configuration
+- Auto-scaling settings
+- Network configuration
+
 ## Configuration
 
 Create a `.env` file in the project root with the following variables:

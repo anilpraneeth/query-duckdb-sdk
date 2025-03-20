@@ -1,0 +1,19 @@
+{
+    "cluster": "query-duckdb-cluster",
+    "serviceName": "query-duckdb-service",
+    "taskDefinition": "query-duckdb-sdk:1",
+    "desiredCount": 1,
+    "launchType": "FARGATE",
+    "networkConfiguration": {
+        "awsvpcConfiguration": {
+            "subnets": [
+                "${SUBNET_ID_1}",
+                "${SUBNET_ID_2}"
+            ],
+            "securityGroups": [
+                "${SECURITY_GROUP_ID}"
+            ],
+            "assignPublicIp": "ENABLED"
+        }
+    }
+} 

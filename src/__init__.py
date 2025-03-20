@@ -1,0 +1,3 @@
+"""
+Query DuckDB SDK package.
+"""

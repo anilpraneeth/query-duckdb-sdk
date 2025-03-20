@@ -44,16 +44,12 @@ def _get_secrets_from_env() -> Dict[str, str]:
         'aws_secret_access_key': os.environ.get('AWS_SECRET_ACCESS_KEY')
     }
 
-def create_s3tables_client(region: str, credentials: Dict[str, str]) -> Any:
+def create_s3tables_client(region: str) -> Any:
     """
-    Create an S3 Tables client
+    Create an S3 Tables client using the default credential provider chain
     """
     try:
-        session = boto3.Session(
-            aws_access_key_id=credentials['aws_access_key_id'],
-            aws_secret_access_key=credentials['aws_secret_access_key'],
-            region_name=region
-        )
+        session = boto3.Session(region_name=region)
         
         # Create S3 Tables client with proper configuration
         config = Config(

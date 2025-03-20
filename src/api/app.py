@@ -38,11 +38,7 @@ def create_app(config):
     
     iceberg_service = IcebergService(
         region=config.aws_region,
-        credentials={
-            'aws_access_key_id': config.aws_access_key_id,
-            'aws_secret_access_key': config.aws_secret_access_key
-        },
-        config=config  # Pass the config object
+        config=config
     )
     
     # Create GraphQL router

@@ -1,7 +1,6 @@
 import os
 from typing import Dict, Any
 from src.utils.logging_utils import get_logger
-from src.utils.aws_utils import get_aws_credentials
 
 logger = get_logger(__name__)
 
@@ -12,7 +11,6 @@ class FederatedQueryConfig:
         """Initialize configuration from environment variables"""
         # AWS Configuration
         self.aws_region = os.getenv('AWS_REGION', 'us-east-1')
-        self.aws_secret_name = os.getenv('AWS_SECRET_NAME', 'local-dev')
         self.s3_table_bucket = os.getenv('S3_TABLE_BUCKET', 'local-dev-bucket')
         
         # Application Settings
@@ -49,18 +47,12 @@ class FederatedQueryConfig:
         self.glue_catalog_id = os.getenv('GLUE_CATALOG_ID', '')
         self.sagemaker_integration = os.getenv('SAGEMAKER_INTEGRATION', 'false').lower() == 'true'
         
-        # Get AWS credentials
-        credentials = get_aws_credentials(self.aws_region, self.aws_secret_name)
-        self.aws_access_key_id = credentials.get('aws_access_key_id')
-        self.aws_secret_access_key = credentials.get('aws_secret_access_key')
-        
     def validate(self) -> bool:
         """Validate the configuration"""
         # For local development, we don't require AWS credentials
         if os.getenv('ENVIRONMENT') == 'production':
             required_vars = [
                 'AWS_REGION',
-                'AWS_SECRET_NAME',
                 'S3_TABLE_BUCKET',
                 'POSTGRES_HOST',
                 'POSTGRES_DATABASE',
@@ -72,10 +64,6 @@ class FederatedQueryConfig:
             missing_vars = [var for var in required_vars if not os.getenv(var)]
             if missing_vars:
                 logger.logjson("ERROR", f"Missing required environment variables: {missing_vars}")
-                return False
-                
-            if not self.aws_access_key_id or not self.aws_secret_access_key:
-                logger.logjson("ERROR", "Missing AWS credentials")
                 return False
                 
         return True 

@@ -10,8 +10,8 @@
                 "s3:DeleteObject"
             ],
             "Resource": [
-                "arn:aws:s3:::YOUR_BUCKET_NAME/*",
-                "arn:aws:s3:::YOUR_BUCKET_NAME"
+                "arn:aws:s3:::*",
+                "arn:aws:s3:::*/*"
             ]
         },
         {
@@ -43,10 +43,28 @@
         {
             "Effect": "Allow",
             "Action": [
+                "s3:GetObject",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::*--table-s3*",
+                "arn:aws:s3:::*--table-s3*/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3tables:*"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
                 "logs:CreateLogStream",
                 "logs:PutLogEvents"
             ],
-            "Resource": "arn:aws:logs:us-east-1:YOUR_AWS_ACCOUNT_ID:log-group:/ecs/query-duckdb-sdk:*"
+            "Resource": "arn:aws:logs:*:*:log-group:/ecs/query-duckdb-sdk:*"
         }
     ]
 } 

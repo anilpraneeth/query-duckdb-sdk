@@ -30,32 +30,17 @@ class IcebergService:
         logger.info(f"Initialized Iceberg service for region {region}")
         self.client = create_s3tables_client(region)
         
-        # Get table bucket name from environment and construct ARN
-        self.table_bucket_name = os.environ.get('S3_TABLE_BUCKET')
-        if not self.table_bucket_name:
+        # Get default table bucket name from environment and construct ARN
+        self.default_table_bucket_name = os.environ.get('S3_TABLE_BUCKET')
+        if not self.default_table_bucket_name:
             raise ValueError("S3_TABLE_BUCKET environment variable is required")
         
         # Get account ID using STS
         sts_client = self.session.client('sts')
-        account_id = sts_client.get_caller_identity()['Account']
+        self.account_id = sts_client.get_caller_identity()['Account']
         
-        # Construct the bucket ARN with the correct s3tables service format
-        self.table_bucket_arn = f"arn:aws:s3tables:{region}:{account_id}:bucket/{self.table_bucket_name}"
-        
-        # Initialize PyIceberg catalog with S3 Tables REST endpoint configuration
-        self.catalog = load_catalog(
-            's3tables',
-            **{
-                'type': 'rest',
-                'warehouse': self.table_bucket_arn,
-                'uri': f"https://s3tables.{region}.amazonaws.com/iceberg",
-                'rest.sigv4-enabled': 'true',
-                'rest.signing-name': 's3tables',
-                'rest.signing-region': region,
-                'io-impl': 'org.apache.iceberg.aws.s3.S3FileIO',
-                'aws.region': region
-            }
-        )
+        # Initialize PyIceberg catalog with default bucket
+        self._init_catalog(self.default_table_bucket_name)
         
         # Initialize DuckDB connection
         self.connection = None
@@ -70,6 +55,28 @@ class IcebergService:
         
         # Connect to DuckDB
         self.connect()
+
+    def _init_catalog(self, bucket_name: str):
+        """Initialize the PyIceberg catalog with a specific bucket"""
+        table_bucket_arn = f"arn:aws:s3tables:{self.region}:{self.account_id}:bucket/{bucket_name}"
+        self.catalog = load_catalog(
+            's3tables',
+            **{
+                'type': 'rest',
+                'warehouse': table_bucket_arn,
+                'uri': f"https://s3tables.{self.region}.amazonaws.com/iceberg",
+                'rest.sigv4-enabled': 'true',
+                'rest.signing-name': 's3tables',
+                'rest.signing-region': self.region,
+                'io-impl': 'org.apache.iceberg.aws.s3.S3FileIO',
+                'aws.region': self.region
+            }
+        )
+
+    def _get_table_bucket_arn(self, bucket_name: Optional[str] = None) -> str:
+        """Get the ARN for a table bucket, using default if not specified"""
+        bucket = bucket_name or self.default_table_bucket_name
+        return f"arn:aws:s3tables:{self.region}:{self.account_id}:bucket/{bucket}"
 
     def _extract_table_info(self, query: str) -> tuple[str, str]:
         """Extract namespace and table name from an Iceberg query.
@@ -250,7 +257,7 @@ class IcebergService:
     async def execute_query(
         self,
         query: str,
-        table_bucket_arn: Optional[str] = None,
+        bucket: Optional[str] = None,
         namespace: Optional[str] = None,
         table_name: Optional[str] = None,
         recursive: bool = False,
@@ -268,9 +275,10 @@ class IcebergService:
         if not namespace or not table_name:
             namespace, table_name = self._extract_table_info(query)
             
-        # Use environment variable if table_bucket_arn not provided
-        if not table_bucket_arn:
-            table_bucket_arn = self.table_bucket_arn
+        # Use specified bucket or default
+        table_bucket_arn = self._get_table_bucket_arn(bucket)
+        if bucket and bucket != self.default_table_bucket_name:
+            self._init_catalog(bucket)
 
         # Extract columns from query if not provided
         if not columns:
@@ -287,9 +295,9 @@ class IcebergService:
             table_name=table_name,
             columns=columns,
             s3_region=s3_region or self.region,
-            s3_access_key_id=s3_access_key_id or self.credentials.get('aws_access_key_id'),
-            s3_secret_access_key=s3_secret_access_key or self.credentials.get('aws_secret_access_key'),
-            s3_session_token=s3_session_token,
+            s3_access_key_id=s3_access_key_id or self.session.get_credentials().access_key,
+            s3_secret_access_key=s3_secret_access_key or self.session.get_credentials().secret_key,
+            s3_session_token=s3_session_token or self.session.get_credentials().token,
             s3_endpoint=s3_endpoint,
             s3_url_style=s3_url_style
         )
@@ -366,16 +374,20 @@ class IcebergService:
             logger.logjson("ERROR", f"Error getting table schema for {table_name}: {str(e)}")
             return None
 
-    async def get_tables(self) -> List[Dict[str, Any]]:
-        """List all Iceberg tables in the catalog"""
+    async def get_tables(self, bucket: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List all Iceberg tables in the specified bucket or default bucket"""
         try:
+            if bucket and bucket != self.default_table_bucket_name:
+                self._init_catalog(bucket)
+            
             tables = self.catalog.list_tables('default')
-            bucket_name = os.environ.get('TABLE_BUCKET_NAME', 'default-bucket')
+            bucket_name = bucket or self.default_table_bucket_name
             return [
                 {
                     "name": table[1],
                     "location": f"s3://{bucket_name}/{table[1]}",
-                    "format": "iceberg"
+                    "format": "iceberg",
+                    "bucket": bucket_name
                 }
                 for table in tables
             ]

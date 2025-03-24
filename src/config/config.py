@@ -25,7 +25,7 @@ class FederatedQueryConfig:
         self.postgres_port = int(os.getenv('POSTGRES_PORT', '5432'))
         self.postgres_database = os.getenv('POSTGRES_DATABASE', 'your_database')
         self.postgres_user = os.getenv('POSTGRES_USER', 'your_username')
-        self.postgres_password = os.getenv('POSTGRES_PASSWORD', 'your_password')
+        self.postgres_password = os.getenv('POSTGRES_PASSWORD')
         self.postgres_ssl_mode = os.getenv('POSTGRES_SSL_MODE', 'prefer')
         self.postgres_pool_size = int(os.getenv('POSTGRES_POOL_SIZE', '5'))
         
@@ -57,7 +57,6 @@ class FederatedQueryConfig:
                 'POSTGRES_HOST',
                 'POSTGRES_DATABASE',
                 'POSTGRES_USER',
-                'POSTGRES_PASSWORD',
                 'ICEBERG_CATALOG'
             ]
             

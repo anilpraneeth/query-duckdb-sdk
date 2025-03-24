@@ -6,7 +6,8 @@ def build_select_query(
     filters: Optional[Dict[str, Any]] = None,
     limit: Optional[int] = None,
     order_by: Optional[str] = None,
-    schema: str = 's3tables'
+    schema: str = 's3tables',
+    bucket: Optional[str] = None
 ) -> str:
     """
     Build a SELECT query with optional clauses
@@ -18,6 +19,7 @@ def build_select_query(
         limit: Number of rows to return
         order_by: Column name to order by
         schema: Schema name (default: 's3tables')
+        bucket: Optional bucket name to use
         
     Returns:
         str: Constructed SQL query
@@ -42,6 +44,10 @@ def build_select_query(
     # Build LIMIT clause
     limit_clause = f"LIMIT {limit}" if limit else ""
     
+    # Use bucket-specific schema if specified
+    if bucket:
+        schema = f"{schema}_{bucket}"
+    
     # Construct query
     query = f"""
         SELECT {cols}
@@ -53,7 +59,12 @@ def build_select_query(
     
     return query + ";"
 
-def build_stats_query(table_name: str, column_name: str, schema: str = 's3tables') -> str:
+def build_stats_query(
+    table_name: str,
+    column_name: str,
+    schema: str = 's3tables',
+    bucket: Optional[str] = None
+) -> str:
     """
     Build a query to get column statistics
     
@@ -61,10 +72,15 @@ def build_stats_query(table_name: str, column_name: str, schema: str = 's3tables
         table_name: Name of the table
         column_name: Name of the column to get stats for
         schema: Schema name (default: 's3tables')
+        bucket: Optional bucket name to use
         
     Returns:
         str: Constructed SQL query
     """
+    # Use bucket-specific schema if specified
+    if bucket:
+        schema = f"{schema}_{bucket}"
+        
     query = f"""
         SELECT 
             MIN({column_name}) as min_value,
@@ -81,7 +97,8 @@ def build_distinct_values_query(
     table_name: str,
     column_name: str,
     limit: Optional[int] = None,
-    schema: str = 's3tables'
+    schema: str = 's3tables',
+    bucket: Optional[str] = None
 ) -> str:
     """
     Build a query to get distinct values in a column
@@ -91,11 +108,17 @@ def build_distinct_values_query(
         column_name: Name of the column
         limit: Optional limit on number of results
         schema: Schema name (default: 's3tables')
+        bucket: Optional bucket name to use
         
     Returns:
         str: Constructed SQL query
     """
     limit_clause = f"LIMIT {limit}" if limit else ""
+    
+    # Use bucket-specific schema if specified
+    if bucket:
+        schema = f"{schema}_{bucket}"
+        
     query = f"""
         SELECT 
             {column_name} as value,

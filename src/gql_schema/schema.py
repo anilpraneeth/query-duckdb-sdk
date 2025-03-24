@@ -68,6 +68,7 @@ class S3Table:
     name: str
     location: str
     format: str
+    bucket: str
 
 @strawberry.type
 class TableSchema:
@@ -127,15 +128,16 @@ def create_query(postgres_service: PostgresService, iceberg_service: IcebergServ
             return "OK"
         
         @strawberry.field
-        async def list_s3_tables(self) -> List[S3Table]:
-            """List all S3 tables in the configured bucket"""
+        async def list_s3_tables(self, bucket: Optional[str] = None) -> List[S3Table]:
+            """List all S3 tables in the specified bucket or default bucket"""
             try:
-                tables = await iceberg_service.get_tables()
+                tables = await iceberg_service.get_tables(bucket)
                 return [
                     S3Table(
                         name=table["name"],
                         location=table["location"],
-                        format=table["format"]
+                        format=table["format"],
+                        bucket=table["bucket"]
                     )
                     for table in tables
                 ]
@@ -487,7 +489,7 @@ def create_query(postgres_service: PostgresService, iceberg_service: IcebergServ
                 json_results = []
                 for row in results:
                     json_row = {}
-                    for key, value in dict(row).items():
+                    for key, value in row.items():
                         if isinstance(value, (int, float, str, bool, type(None))):
                             json_row[key] = value
                         else:
